@@ -72,3 +72,70 @@ vite-plugin-imagemin
 
 Vite 中提供了 import.meta.glob 的语法糖来解决批量导入的问题
 `const icons = import.meta.glob('../../assets/icons/logo-\*.svg');`
+
+## 预构建
+
+以下是开发阶段预构建处理，在生产构建中则会使用 @rollup/plugin-commonjs。
+
+所谓的 no-bundle 只是对于源代码而言，对于第三方依赖而言，Vite 还是选择 bundle(打包)，并且使用速度极快的打包器 Esbuild 来完成这一过程，达到秒级的依赖编译速度。
+
+相当多的第三方库仍然没有 ES 版本的产物，比如大名鼎鼎的 react，这种 CommonJS 格式的代码在 Vite 当中无法直接运行，我们需要将它转换成 ESM 格式的产物。
+依赖预构建主要做了两件事情：
+
+- 将其他格式(如 UMD 和 CommonJS)的产物转换为 ESM 格式，使其在浏览器通过 `<script type="module"><script>`的方式正常加载。
+
+- 打包第三方库的代码，将各个第三方库分散的文件合并到一起，减少 HTTP 请求数量，避免页面加载性能劣化。
+
+### 请求瀑布流问题
+
+loadsh-es 库本身是有 ES 版本产物的，可以在 Vite 中直接运行。但实际上，它在加载时会发出特别多的请求，导致页面加载的前几秒几都乎处于卡顿状态
+
+每个 import 都会触发一次新的文件请求，因此在这种依赖层级深、涉及模块数量多的情况下，会触发成百上千个网络请求，巨大的请求量加上 Chrome 对同一个域名下只能同时支持 6 个 HTTP 并发请求的限制，导致页面加载十分缓慢
+
+在进行依赖的预构建之后，lodash-es 这个库的代码被打包成了一个文件，这样请求的数量会骤然减少，页面加载也快了许多
+
+### 开启
+
+#### 自动开启
+
+项目启动成功后，你可以在根目录下的 node_modules 中发现.vite 目录，这就是预构建产物文件存放的目录
+
+在浏览器访问页面后，打开 Dev Tools 中的网络调试面板，你可以发现第三方包的引入路径已经被重写
+
+并且对于依赖的请求结果，Vite 的 Dev Server 会设置强缓存
+
+如果以下 3 个地方都没有改动，Vite 将一直使用本地.vite 缓存文件:
+
+- package.json 的 dependencies 字段
+- 各种包管理器的 lock 文件
+- optimizeDeps 配置内容
+
+#### 手动开启
+
+任意一种方法清除缓存:
+
+- 删除 node_modules/.vite 目录。
+- 在 Vite 配置文件中，将 server.force 设为 true。(注意，Vite 3.0 中配置项有所更新，你需要将 optimizeDeps.force 设为 true)
+- 命令行执行 npx vite --force 或者 npx vite optimize。
+
+### 自定义配置详解
+
+- 入口文件——entries：支持 glob 语法
+
+- 添加一些依赖——include：动态 import 经常会导致某些依赖只能在运行时被识别出来，vite 会二次预构建，仅需要把预构建的流程重新运行一遍，还得重新刷新页面，并且需要重新请求所有的模块，所以需要通过 include 参数提前声明需要按需加载的依赖
+
+### 第三方库有问题
+
+#### 改第三方库代码
+
+pnpm7.4.0 版本后，其内置了 patch 包的功能
+
+也可以使用 patch-package 这个库
+
+一方面，它能记录第三方库代码的改动，另一方面也能将改动同步到团队每个成员。
+
+package.json 配置通过 postinstall 脚本自动应用 patches 的修改
+
+#### 加入 Esbuild 插件
+
+修改指定模块的内容
