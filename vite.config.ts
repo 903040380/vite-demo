@@ -6,6 +6,9 @@ import autoprefixer from 'autoprefixer'
 import svgr from 'vite-plugin-svgr'
 import viteImagemin from 'vite-plugin-imagemin'
 import { createSvgIconsPlugin } from 'vite-plugin-svg-icons'
+import testHooksPlugin from './plugins/test-hooks'
+import virtual from './plugins/virtual-module'
+import inspect from 'vite-plugin-inspect'
 
 // 全局 scss 文件的路径
 // 用 normalizePath 解决 window 下的路径问题
@@ -46,7 +49,10 @@ export default defineConfig({
     }),
     createSvgIconsPlugin({
       iconDirs: [path.join(__dirname, 'src/assets/icons')]
-    })
+    }),
+    // testHooksPlugin(),
+    virtual(),
+    inspect()
   ],
 
   // 域名

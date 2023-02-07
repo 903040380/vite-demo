@@ -1,5 +1,15 @@
 # vite
 
+---
+
+项目每个模块应该分离分支：
+
+- plugin:实现 vite 插件分支
+
+---
+
+vite 特点：
+
 - 在 Vite 项目中，一个 import 语句即代表一个 HTTP 请求
 
 - Vite 所倡导的 no-bundle 理念的真正含义: 利用浏览器原生 ES 模块的支持，实现开发阶段的 Dev Server，进行模块的按需加载，而不是先整体打包再进行加载
@@ -139,3 +149,59 @@ package.json 配置通过 postinstall 脚本自动应用 patches 的修改
 #### 加入 Esbuild 插件
 
 修改指定模块的内容
+
+## 双引擎架构
+
+### 性能利器——Esbuild
+
+Esbuild 的确是 Vite 高性能的得力助手，在很多关键的构建阶段让 Vite 获得了相当优异的性能
+
+#### 依赖预构建——作为 Bundle 工具
+
+依赖预构建阶段， Esbuild 作为 Bundler 的角色存在
+
+Esbuild 作为打包工具也有一些缺点。
+
+- 不支持降级到 ES5 的代码。这意味着在低端浏览器代码会跑不起来。
+- 不支持 const enum 等语法。这意味着单独使用这些语法在 esbuild 中会直接抛错。
+- 不提供操作打包产物的接口，像 Rollup 中灵活处理打包产物的能力(如 renderChunk 钩子)在 Esbuild 当中完全没有。
+- 不支持自定义 Code Splitting 策略。传统的 Webpack 和 Rollup 都提供了自定义拆包策略的 API，而 Esbuild 并未提供，从而降级了拆包优化的灵活性。
+
+#### 单文件编译——作为 TS 和 JSX 编译工具
+
+在 TS(X)/JS(X) 单文件编译上面，Vite 也使用 Esbuild 进行语法转译，也就是将 Esbuild 作为 Transformer 来用
+
+Esbuild 转译 TS 或者 JSX 的能力通过 Vite 插件提供，这个 Vite 插件在开发环境和生产环境都会执行，Vite 已经将 Esbuild 的 Transformer 能力用到了生产环境。
+
+这部分能力用来替换原先 Babel 或者 TSC 的功能，因为无论是 Babel 还是 TSC 都有性能问题，大家对这两个工具普遍的认知都是: 慢，太慢了。
+
+最大的局限性就在于 TS 中的类型检查问题。这是因为 Esbuild 并没有实现 TS 的类型系统，
+vite build 之前会先执行 tsc 命令，也就是借助 TS 官方的编译器进行类型检查
+
+#### 代码压缩——作为压缩工具
+
+使用 Esbuild 来进行生产环境的代码压缩，包括 JS 代码和 CSS 代码。
+
+在生产环境中 Esbuild 压缩器通过插件的形式融入到了 Rollup 的打包流程中
+
+传统的方式都是使用 Terser 这种 JS 开发的压缩器来实现，在 Webpack 或者 Rollup 中作为一个 Plugin 来完成代码打包后的压缩混淆的工作。但 Terser 其实很慢
+
+### 构建基石——Rollup
+
+Rollup 在 Vite 中的重要性一点也不亚于 Esbuild，它既是 Vite 用作生产环境打包的核心工具，也直接决定了 Vite 插件机制的设计。
+
+#### 生产环境 Bundle
+
+Vite 默认选择在生产环境中利用 Rollup 打包，并基于 Rollup 本身成熟的打包能力进行扩展和优化，主要包含 3 个方面:
+
+- CSS 代码分割。如果某个异步模块中引入了一些 CSS 代码，Vite 就会自动将这些 CSS 抽取出来生成单独的文件，提高线上产物的缓存复用率。对应 webpack 的 mini-css-extract-plugin
+
+- 自动预加载。Vite 会自动为入口 chunk 的依赖自动生成预加载标签`<link rel="modulepreload">`这种适当预加载的做法会让浏览器提前下载好资源，优化页面性能。
+
+- 异步 Chunk 加载优化。
+
+#### 兼容插件机制
+
+无论是开发阶段还是生产环境，Vite 都根植于 Rollup 的插件机制和生态
+
+Vite 的插件写法完全兼容 Rollup，因此在生产环境中将所有的 Vite 插件传入 Rollup 也没有问题，反过来说，Rollup 插件却不一定能完全兼容 Vite
