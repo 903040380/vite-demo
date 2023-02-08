@@ -1,7 +1,30 @@
+let timer: number | undefined
+
+if (import.meta.hot) {
+  // 初始化 count
+  if (!import.meta.hot.data.count) {
+    import.meta.hot.data.count = 0
+  }
+  // 销毁模块时清除定时器
+  import.meta.hot.dispose(() => {
+    if (timer) {
+      clearInterval(timer)
+    }
+  })
+}
+
 export function initState() {
-  let count = 0;
-  setInterval(() => {
-    let countEle = document.getElementById('count');
-    countEle!.innerText =  ++count + '';
-  }, 1000);
+  // 状态保存在热更新内
+  const getAndIncCount = () => {
+    const data = import.meta.hot?.data || {
+      count: 0,
+    }
+    data.count = data.count + 1
+    return data.count
+  }
+
+  timer = setInterval(() => {
+    let countEle = document.getElementById('count')
+    countEle!.innerText = getAndIncCount() + ''
+  }, 1000)
 }
