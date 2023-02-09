@@ -1,98 +1,88 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { normalizePath } from 'vite'
-import path from 'path'
-import autoprefixer from 'autoprefixer'
-import svgr from 'vite-plugin-svgr'
-import viteImagemin from 'vite-plugin-imagemin'
-import { createSvgIconsPlugin } from 'vite-plugin-svg-icons'
+import { defineConfig, normalizePath } from "vite";
+import react from "@vitejs/plugin-react";
+import resolve from 'resolve';
 
-// 全局 scss 文件的路径
-// 用 normalizePath 解决 window 下的路径问题
-const variablePath = normalizePath(path.resolve('./src/variable.scss'))
-
-// 是否为生产环境，在生产环境一般会注入 NODE_ENV 这个环境变量，见下面的环境变量文件配置
-const isProduction = process.env.NODE_ENV === 'production'
-// 填入项目的 CDN 域名地址
-const CDN_URL = '/'
-
-// https://vitejs.dev/config/
-export default defineConfig({
-  // root: path.join(__dirname, 'src'),  // 手动指定项目根目录位置
-  plugins: [
-    react(),
-    svgr(),
-    viteImagemin({
-      // 无损压缩配置，无损压缩下图片质量不会变差
-      optipng: {
-        optimizationLevel: 7
-      },
-      // 有损压缩配置，有损压缩下图片质量可能会变差
-      pngquant: {
-        quality: [0.8, 0.9]
-      },
-      // svg 优化
-      svgo: {
-        plugins: [
-          {
-            name: 'removeViewBox'
-          },
-          {
-            name: 'removeEmptyAttrs',
-            active: false
-          }
-        ]
-      }
-    }),
-    createSvgIconsPlugin({
-      iconDirs: [path.join(__dirname, 'src/assets/icons')]
-    })
+const chunkGroups = {
+  'react-vendor': [
+    normalizePath(require.resolve('react')),
+    normalizePath(require.resolve('react-dom'))
   ],
+}
 
-  // 域名
-  base: isProduction ? CDN_URL : '/',
+const cache = new Map();
 
-  resolve: {
-    // 别名配置
-    alias: {
-      '@assets': path.join(__dirname, 'src/assets')
-    }
-  },
+function isDepInclude (id: string, depPaths: string[], importChain: string[], getModuleInfo): boolean | undefined  {
+  id = normalizePath(id);
+  const key = `${id}-${depPaths.join('|')}`;
 
-  // css 相关的配置
-  css: {
-    // 预处理器配置
-    preprocessorOptions: {
-      scss: {
-        // additionalData 的内容会在每个 scss 文件的开头自动注入
-        additionalData: `@import "${variablePath}";`
-      }
-    },
-    // css-module配置
-    modules: {
-      // 一般我们可以通过 generateScopedName 属性来对生成的类名进行自定义
-      // 其中，name 表示当前文件名，local 表示类名
-      generateScopedName: '[name]__[local]___[hash:base64:5]'
-    },
-    // 进行 PostCSS 配置
-    postcss: {
-      plugins: [
-        autoprefixer({
-          // 指定目标浏览器
-          overrideBrowserslist: [
-            'last 2 versions',
-            '> 1%',
-            'Chrome > 40',
-            'ff > 31',
-            'ie 11'
-          ]
-        })
-      ]
-    }
-  },
-
-  build: {
-    // 内嵌静态资源为base64
-    assetsInlineLimit: 3 * 1024 // 3 KB
+  // 出现循环依赖，不考虑
+  if (importChain.includes(id)) {
+    cache.set(key, false);
+    return false;
   }
-})
+  if (cache.has(key)) {
+    return cache.get(key);
+  }
+  // 命中依赖列表
+  if (depPaths.includes(id)) {
+    importChain.forEach(item => cache.set(`${item}-${depPaths.join('|')}`, true));
+    return true;
+  }
+  const moduleInfo = getModuleInfo(id);
+  if (!moduleInfo || !moduleInfo.importers) {
+    cache.set(key, false);
+    return false;
+  }
+  // 递归查找上层引用者
+  const isInclude = moduleInfo.importers.some(
+    importer => isDepInclude(importer, depPaths, importChain.concat(id), getModuleInfo)
+  );
+  // 设置缓存
+  cache.set(key, isInclude);
+  return isInclude;
+};
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    minify: false,
+    manifest: true,
+    // 可以这个配置关闭 css codesplit
+    cssCodeSplit: false,
+    rollupOptions: {
+      output: {
+        // 1. 对象配置
+        // manualChunks: {
+        //   // 将 React 相关库打包成单独的 chunk 中
+        //   'react-vendor': ['react', 'react-dom'],
+        //   // 将 Lodash 库的代码单独打包
+        //   'lodash': ['lodash-es'],
+        //   // 将 组件库的代码打包
+        //   'library': ['antd', '@arco-design/web-react'],
+        // }
+        // 2. 函数配置
+        // manualChunks(id) {
+        //   if (id.includes('antd') || id.includes('arco')) {
+        //     return 'library';
+        //   }
+        //   if (id.includes('lodash-es')) {
+        //     return 'lodash';
+        //   }
+        //   if (id.includes('node_modules/react')) {
+        //     return 'react';
+        //   }
+        //   return 'vendor';
+        // }
+        // 3. 函数配置，解决循环依赖的问题
+        manualChunks(id, { getModuleInfo }) { 
+          for (const group of Object.keys(chunkGroups)) {
+            const deps = chunkGroups[group];
+            if (id.includes('node_modules') && isDepInclude(id, deps, [], getModuleInfo)) { 
+              return group;
+            }
+          }
+        }
+      },
+    },
+  },
+});
