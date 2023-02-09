@@ -1,17 +1,18 @@
-import { Button } from "antd";
-import "antd/es/button/style/index.css";
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Outlet, Link } from "react-router-dom";
-import lodash from 'lodash-es';
-import { Notification } from '@arco-design/web-react';
+import { Button } from 'antd'
+import 'antd/es/button/style/index.css'
+import { lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Outlet, Link } from 'react-router-dom'
+import lodash from 'lodash-es'
+import { Notification } from '@arco-design/web-react'
+import React from 'react'
 
-let a = 1;
+let a = 1
 lodash.debounce(() => {
-  a++;
-  console.log(a);
+  a++
+  console.log(a)
   console.log(123)
 })
-const DynamicComponent = lazy(() => import("./components/Dynamic/Dynamic"));
+const DynamicComponent = lazy(() => import('./components/Dynamic/Dynamic'))
 
 const App = () => {
   console.log(a)
@@ -39,7 +40,7 @@ const App = () => {
         </Route>
       </Routes>
     </BrowserRouter>
-  );
-};
+  )
+}
 
-export default App;
+export default App

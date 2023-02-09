@@ -1,49 +1,68 @@
-import { defineConfig, normalizePath } from "vite";
-import react from "@vitejs/plugin-react";
-import resolve from 'resolve';
+import { defineConfig, normalizePath } from 'vite'
+import react from '@vitejs/plugin-react'
+import resolve from 'resolve'
+import { chunkSplitPlugin } from 'vite-plugin-chunk-split'
 
 const chunkGroups = {
   'react-vendor': [
     normalizePath(require.resolve('react')),
-    normalizePath(require.resolve('react-dom'))
+    normalizePath(require.resolve('react-dom')),
   ],
 }
 
-const cache = new Map();
+const cache = new Map()
 
-function isDepInclude (id: string, depPaths: string[], importChain: string[], getModuleInfo): boolean | undefined  {
-  id = normalizePath(id);
-  const key = `${id}-${depPaths.join('|')}`;
+function isDepInclude(
+  id: string,
+  depPaths: string[],
+  importChain: string[],
+  getModuleInfo
+): boolean | undefined {
+  id = normalizePath(id)
+  const key = `${id}-${depPaths.join('|')}`
 
   // 出现循环依赖，不考虑
   if (importChain.includes(id)) {
-    cache.set(key, false);
-    return false;
+    cache.set(key, false)
+    return false
   }
   if (cache.has(key)) {
-    return cache.get(key);
+    return cache.get(key)
   }
   // 命中依赖列表
   if (depPaths.includes(id)) {
-    importChain.forEach(item => cache.set(`${item}-${depPaths.join('|')}`, true));
-    return true;
+    importChain.forEach((item) =>
+      cache.set(`${item}-${depPaths.join('|')}`, true)
+    )
+    return true
   }
-  const moduleInfo = getModuleInfo(id);
+  const moduleInfo = getModuleInfo(id)
   if (!moduleInfo || !moduleInfo.importers) {
-    cache.set(key, false);
-    return false;
+    cache.set(key, false)
+    return false
   }
   // 递归查找上层引用者
-  const isInclude = moduleInfo.importers.some(
-    importer => isDepInclude(importer, depPaths, importChain.concat(id), getModuleInfo)
-  );
+  const isInclude = moduleInfo.importers.some((importer) =>
+    isDepInclude(importer, depPaths, importChain.concat(id), getModuleInfo)
+  )
   // 设置缓存
-  cache.set(key, isInclude);
-  return isInclude;
-};
+  cache.set(key, isInclude)
+  return isInclude
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    chunkSplitPlugin({
+      // 指定拆包策略
+      customSplitting: {
+        // 1. 支持填包名。`react` 和 `react-dom` 会被打包到一个名为`render-vendor`的 chunk 里面(包括它们的依赖，如 object-assign)
+        'react-vendor': ['react', 'react-dom'],
+        // 2. 支持填正则表达式。src 中 components 和 utils 下的所有文件被会被打包为`component-util`的 chunk 中
+        'components-util': [/src\/components/, /src\/utils/],
+      },
+    }),
+  ],
   build: {
     minify: false,
     manifest: true,
@@ -56,33 +75,33 @@ export default defineConfig({
         //   // 将 React 相关库打包成单独的 chunk 中
         //   'react-vendor': ['react', 'react-dom'],
         //   // 将 Lodash 库的代码单独打包
-        //   'lodash': ['lodash-es'],
+        //   lodash: ['lodash-es'],
         //   // 将 组件库的代码打包
-        //   'library': ['antd', '@arco-design/web-react'],
-        // }
+        //   library: ['antd', '@arco-design/web-react'],
+        // },
         // 2. 函数配置
         // manualChunks(id) {
         //   if (id.includes('antd') || id.includes('arco')) {
-        //     return 'library';
+        //     return 'library'
         //   }
         //   if (id.includes('lodash-es')) {
-        //     return 'lodash';
+        //     return 'lodash'
         //   }
         //   if (id.includes('node_modules/react')) {
-        //     return 'react';
+        //     return 'react'
         //   }
-        //   return 'vendor';
-        // }
+        //   return 'vendor'
+        // },
         // 3. 函数配置，解决循环依赖的问题
-        manualChunks(id, { getModuleInfo }) { 
-          for (const group of Object.keys(chunkGroups)) {
-            const deps = chunkGroups[group];
-            if (id.includes('node_modules') && isDepInclude(id, deps, [], getModuleInfo)) { 
-              return group;
-            }
-          }
-        }
+        // manualChunks(id, { getModuleInfo }) {
+        //   for (const group of Object.keys(chunkGroups)) {
+        //     const deps = chunkGroups[group];
+        //     if (id.includes('node_modules') && isDepInclude(id, deps, [], getModuleInfo)) {
+        //       return group;
+        //     }
+        //   }
+        // }
       },
     },
   },
-});
+})
